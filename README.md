@@ -1,0 +1,2 @@
+# psycho_benchmark_deepfind
+LLM心理支持，多元化benchmark
