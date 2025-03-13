@@ -8,6 +8,9 @@ from openai import OpenAI
 # 定义API配置（需要替换为你的实际API密钥和端点）
 DEEPSEEK_API_KEY = "sk-b3fe31a92797482891ecf51cf43c2992"
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1"  # 或其他端点
+TENCENT_API_KEY = "sk-S9S3CANDkrBVCm1N8GuCQADLb6lDudLGqZowbyJ9VnZxOukT"
+TENCENT_API_URL = "https://api.lkeap.cloud.tencent.com/v1"
+
 
 # 定义分类维度
 DIMENSIONS = [
@@ -75,10 +78,10 @@ def call_deepseek_api(conversation_content):
 
     try:
         # 使用OpenAI官方库调用API
-        client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_API_URL)
+        client = OpenAI(api_key=TENCENT_API_KEY, base_url=TENCENT_API_URL)
 
         response = client.chat.completions.create(
-            model="deepseek-chat",
+            model="deepseek-v3",
             messages=[
                 {"role": "user", "content": prompt}
             ],
@@ -91,7 +94,7 @@ def call_deepseek_api(conversation_content):
         try:
             return json.loads(ai_response)
         except:
-            print(f"无法解析API响应为JSON: {json.loads(ai_response)}")
+            print(f"无法解析API响应为JSON: {ai_response}")
             return {"符合维度": False, "所属维度": "", "理由": "处理错误"}
             
     except Exception as e:
@@ -134,7 +137,7 @@ def process_conversations(data, use_real_api=False):
         if use_real_api:
             classification = call_deepseek_api(item)
             # 添加延迟以避免API速率限制
-            time.sleep(1)
+            time.sleep(0.1)
         else:
             classification = mock_deepseek_api(item)
         
@@ -175,7 +178,7 @@ def save_results(results, output_dir="output"):
 
 def main():
     # 设置文件路径
-    json_file_path = "PsyQA_full.json"  # 更改为你的实际文件路径
+    json_file_path = "PsyQA_example.json"  # 更改为你的实际文件路径
     
     # 加载数据
     data = load_json_data(json_file_path)
