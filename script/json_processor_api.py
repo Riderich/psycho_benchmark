@@ -4,6 +4,7 @@ import os
 from tqdm import tqdm
 import time
 from openai import OpenAI
+# from rule_based_classifier import rule_based_classification
 
 # 定义API配置（需要替换为你的实际API密钥和端点）
 DEEPSEEK_API_KEY = "sk-b3fe31a92797482891ecf51cf43c2992"
@@ -32,12 +33,12 @@ def load_json_data(file_path):
         print(f"加载JSON文件时出错: {e}")
         return None
 
-def call_deepseek_api(conversation_content):
+def call_deepseek_api(conversation_content, max_retries=3):
     """调用DeepSeek-R1 API进行分类"""
     # 构建提示
     prompt = f"""
-分析以下对话内容，判断求助者可能的心理问题是否符合以下五个维度之一：
-1. 对年龄增长带来的死亡的恐惧导致的心理问题
+请仔细分析以下对话内容，判断其是否确实属于老年人心理问题的以下维度之一：
+1. 对年龄增长带来的对死亡的恐惧导致的心理问题
 2. 因年老空巢或社会隔离的孤独感导致的心理问题
 3. 对慢性病治疗的焦虑导致的心理问题
 4. 因退休脱离工作或跟不上时代的无用感导致的心理问题
@@ -47,90 +48,82 @@ def call_deepseek_api(conversation_content):
 问题: {conversation_content['instruction']}
 问题详情: {conversation_content['input']}
 
-请回答以下问题：
-1. 这个对话是否符合以上五个维度中的任何一个?
-2. 如果符合，它属于哪个维度?
-3. 简要说明理由。
+请进行严格的判断，确保内容真实符合维度定义。回答以下问题：
+1. 这个对话是否明确且真实地符合以上维度之一？
+2. 如果符合，具体属于哪个维度？
+3. 请详细说明判断理由，解释为什么符合或不符合该维度，尤其注意是否存在误判的可能。
 
 以JSON格式回答，格式如下:
 {{
     "符合维度": true/false,
     "所属维度": "维度名称或空字符串",
-    "理由": "简要解释"
+    "理由": "详细解释"
 }}
 """
 
-    # headers = {
-    #     "Content-Type": "application/json",
-    #     "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
-    # }
-    
-    # payload = {
-    #     "model": "deepseek-chat",  # 或者你想使用的具体模型名称
-    #     "messages": [
-    #         {
-    #             "role": "user",
-    #             "content": prompt
-    #         }
-    #     ],
-    #     "temperature": 0.1,  # 低温度以获得更确定的回答
-    #     "max_tokens": 500
-    # }
-
-    try:
-        # 使用OpenAI官方库调用API
-        client = OpenAI(api_key=TENCENT_API_KEY, base_url=TENCENT_API_URL)
-
-        response = client.chat.completions.create(
-            model="deepseek-v3",
-            messages=[
-                {"role": "user", "content": prompt}
-            ],
-            stream=False
-        )
-        
-        response = response.choices[0].message.content
-        ai_response=response[response.find("{"):response.find("}")+1]
-        
-        # 尝试解析JSON响应
+    for attempt in range(max_retries):
         try:
-            print (ai_response)
-            return json.loads(ai_response)
-        
-        except:
-            print("无法解析API响应为JSON")
-            return {"符合维度": False, "所属维度": "", "理由": "处理错误"}
+            # 使用OpenAI官方库调用API
+            client = OpenAI(api_key=TENCENT_API_KEY, base_url=TENCENT_API_URL)
+
+            response = client.chat.completions.create(
+                model="deepseek-v3",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                stream=False
+            )
             
-    except Exception as e:
-        print(f"API调用出错: {e}")
-        return {"符合维度": False, "所属维度": "", "理由": f"API错误: {str(e)}"}
+            response = response.choices[0].message.content
+            ai_response = response[response.find("{"):response.find("}")+1]
+            
+            # 尝试解析JSON响应
+            try:
+                print(ai_response)
+                return json.loads(ai_response)
+            
+            except json.JSONDecodeError:
+                print("无法解析API响应为JSON")
+                if attempt < max_retries - 1:
+                    print(f"重试第 {attempt + 1} 次...")
+                    time.sleep(1)  # 等待一秒后重试
+                else:
+                    return {"符合维度": False, "所属维度": "", "理由": "处理错误"}
+                    
+        except Exception as e:
+            print(f"API调用出错: {e}")
+            if attempt < max_retries - 1:
+                print(f"重试第 {attempt + 1} 次...")
+                time.sleep(1)  # 等待一秒后重试
+            else:
+                return {"符合维度": False, "所属维度": "", "理由": f"API错误: {str(e)}"}
 
     
-def mock_deepseek_api(conversation_content):
-    """模拟API调用的函数，用于测试"""
-    # 这里可以实现一些简单的规则来模拟分类
-    instruction = conversation_content['instruction'].lower()
-    input_text = conversation_content['input'].lower()
+# def mock_deepseek_api(conversation_content):
+#     """模拟API调用的函数，用于测试"""
+#     # 这里可以实现一些简单的规则来模拟分类
+#     instruction = conversation_content['instruction'].lower()
+#     input_text = conversation_content['input'].lower()
     
-    # 简单模拟：检查是否包含关键词
-    if '健康' in instruction or '健康' in input_text or '身体' in instruction or '身体' in input_text:
-        return {
-            "符合维度": True,
-            "所属维度": "对慢性病治疗的焦虑导致的心理问题",
-            "理由": "对话中提到了健康相关问题"
-        }
-    elif '孤独' in instruction or '孤独' in input_text or '隔离' in instruction:
-        return {
-            "符合维度": True,
-            "所属维度": "因年老空巢或社会隔离的孤独感导致的心理问题",
-            "理由": "对话中提到了孤独或隔离相关问题"
-        }
-    else:
-        return {
-            "符合维度": False,
-            "所属维度": "",
-            "理由": "不符合任何维度"
-        }
+#     # 简单模拟：检查是否包含关键词
+#     if '健康' in instruction or '健康' in input_text or '身体' in instruction or '身体' in input_text:
+#         return {
+#             "符合维度": True,
+#             "所属维度": "对慢性病治疗的焦虑导致的心理问题",
+#             "理由": "对话中提到了健康相关问题"
+#         }
+#     elif '孤独' in instruction or '孤独' in input_text or '隔离' in instruction:
+#         return {
+#             "符合维度": True,
+#             "所属维度": "因年老空巢或社会隔离的孤独感导致的心理问题",
+#             "理由": "对话中提到了孤独或隔离相关问题"
+#         }
+#     else:
+#         return {
+#             "符合维度": False,
+#             "所属维度": "",
+#             "理由": "不符合任何维度"
+#         }
 
 def process_conversations(data, use_real_api=False)-> list[2]:
     """处理所有对话，进行分类"""
@@ -143,8 +136,8 @@ def process_conversations(data, use_real_api=False)-> list[2]:
             classification = call_deepseek_api(item)
             # 添加延迟以避免API速率限制
             time.sleep(0.1)
-        else:
-            classification = mock_deepseek_api(item)
+        # else:
+        #     classification = mock_deepseek_api(item)
         
         # 如果符合任何维度，添加到结果中
         if classification.get("符合维度", False):
@@ -198,7 +191,7 @@ def save_results(results1,results2, output_dir="output"):
 
 def main():
     # 设置文件路径
-    json_file_path = "PsyQA_example.json"  # 更改为你的实际文件路径
+    json_file_path = "sampled_PsyQA_1k.json"  # 更改为你的实际文件路径
     
     # 加载数据
     data = load_json_data(json_file_path)
